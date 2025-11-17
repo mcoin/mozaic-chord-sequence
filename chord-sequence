@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+"""
+Mozaic Chord Sequence Generator - Main Entry Point
+
+A modern CLI tool for generating Mozaic chord sequence scripts.
+"""
+
+import sys
+from pathlib import Path
+
+# Add parent directory to path for package imports
+parent_path = Path(__file__).parent
+sys.path.insert(0, str(parent_path))
+
+from src.cli import main
+
+if __name__ == '__main__':
+    main()

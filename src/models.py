@@ -1,0 +1,335 @@
+"""
+Domain models for Mozaic chord sequence generation.
+
+This module provides Pydantic models for type-safe data handling throughout
+the application, replacing dictionary-based data structures.
+"""
+
+from pathlib import Path
+from typing import List, Optional
+from pydantic import BaseModel, Field, field_validator, computed_field
+
+
+class Bar(BaseModel):
+    """
+    Represents a single bar of chords.
+
+    A bar contains one or more chords that will be displayed across
+    the bar's duration.
+
+    Attributes:
+        chords: List of chord symbols (e.g., ['Cmaj7', 'Dm7', 'G7'])
+    """
+    chords: List[str] = Field(min_length=1, description="Chord symbols in the bar")
+
+    @field_validator('chords')
+    @classmethod
+    def validate_chords(cls, v: List[str]) -> List[str]:
+        """Validate that all chords are non-empty strings."""
+        if not all(isinstance(chord, str) and chord.strip() for chord in v):
+            raise ValueError("All chords must be non-empty strings")
+        return [chord.strip() for chord in v]
+
+    def __len__(self) -> int:
+        """Return the number of chords in the bar."""
+        return len(self.chords)
+
+    def __getitem__(self, index: int) -> str:
+        """Allow indexing into the bar's chords."""
+        return self.chords[index]
+
+
+class Song(BaseModel):
+    """
+    Represents a song with chord sequences.
+
+    A song contains metadata (title, tempo) and the chord progression
+    organized by bars.
+
+    Attributes:
+        title: Song title
+        tempo: Optional tempo in BPM (beats per minute)
+        bars: List of bars, each containing chord symbols
+        source_file: Optional source file path
+    """
+    title: str = Field(min_length=1, description="Song title")
+    tempo: Optional[int] = Field(
+        default=None,
+        ge=20,
+        le=300,
+        description="Tempo in BPM (20-300)"
+    )
+    bars: List[Bar] = Field(min_length=1, description="Bars of chord sequences")
+    source_file: Optional[Path] = Field(
+        default=None,
+        description="Source file path"
+    )
+
+    @computed_field
+    @property
+    def num_bars(self) -> int:
+        """Return the number of bars in the song."""
+        return len(self.bars)
+
+    @computed_field
+    @property
+    def has_tempo(self) -> bool:
+        """Check if the song has a tempo defined."""
+        return self.tempo is not None
+
+    def get_update_block_name(self, song_index: int) -> str:
+        """
+        Get the Mozaic update block name for this song.
+
+        Args:
+            song_index: Zero-based index of the song
+
+        Returns:
+            Update block name (e.g., '@UpdateChordsSong0')
+        """
+        return f"@UpdateChordsSong{song_index}"
+
+    @classmethod
+    def from_file(cls, path: Path) -> "Song":
+        """
+        Create a Song from a chord file.
+
+        File format:
+        - Line 1: Song title
+        - Line 2 (optional): tempo=120
+        - Remaining lines: One bar per line, chords space-separated
+
+        Args:
+            path: Path to the song chord file
+
+        Returns:
+            Song instance
+
+        Raises:
+            ValueError: If file is empty or has no bars
+        """
+        with open(path, "r", encoding="utf-8") as f:
+            lines = [line.strip() for line in f.readlines() if line.strip()]
+
+        if not lines:
+            raise ValueError(f"Empty song file: {path}")
+
+        title = lines[0]
+        tempo = None
+        bar_start_index = 1
+
+        # Detect optional tempo line
+        if len(lines) > 1 and lines[1].lower().startswith("tempo="):
+            try:
+                tempo = int(lines[1].split("=", 1)[1])
+            except ValueError:
+                raise ValueError(f"Invalid tempo format in file: {path}")
+            bar_start_index = 2
+
+        # Parse bars
+        bar_lines = lines[bar_start_index:]
+        if not bar_lines:
+            raise ValueError(f"No bars found in song file: {path}")
+
+        bars = [Bar(chords=line.split()) for line in bar_lines]
+
+        return cls(
+            title=title,
+            tempo=tempo,
+            bars=bars,
+            source_file=path
+        )
+
+
+class SongCollection(BaseModel):
+    """
+    Represents a collection of songs with persistent ordering.
+
+    The collection maintains song order using an index file and handles
+    adding/removing songs while preserving the user's preferred order.
+
+    Attributes:
+        songs: List of Song instances
+        index_file: Path to the persistent index file
+    """
+    songs: List[Song] = Field(default_factory=list, description="Songs in the collection")
+    index_file: Optional[Path] = Field(
+        default=None,
+        description="Path to persistent song order index"
+    )
+
+    def __len__(self) -> int:
+        """Return the number of songs in the collection."""
+        return len(self.songs)
+
+    def __getitem__(self, index: int) -> Song:
+        """Allow indexing into the song collection."""
+        return self.songs[index]
+
+    def __iter__(self):
+        """Allow iteration over songs."""
+        return iter(self.songs)
+
+    @computed_field
+    @property
+    def has_tempo_songs(self) -> bool:
+        """Check if any songs have tempo defined."""
+        return any(song.has_tempo for song in self.songs)
+
+    def add_song(self, song: Song) -> None:
+        """
+        Add a song to the collection.
+
+        Args:
+            song: Song to add
+        """
+        self.songs.append(song)
+
+    def get_song_filenames(self) -> List[str]:
+        """
+        Get list of source filenames for all songs.
+
+        Returns:
+            List of filenames (no paths)
+        """
+        return [
+            song.source_file.name
+            for song in self.songs
+            if song.source_file is not None
+        ]
+
+
+class MozaicMetadata(BaseModel):
+    """
+    Mozaic script metadata and constants.
+
+    Contains all the constant values and metadata needed for
+    generating Mozaic scripts and encoding them.
+
+    Attributes:
+        script_name: Name of the Mozaic script
+        short_name: Short name displayed in Mozaic
+        tap_note: MIDI note for tap tempo
+        tap_channel: MIDI channel for tap tempo
+        layout: Layout number to display
+    """
+    script_name: str = Field(
+        default="Chord Sequence",
+        description="Full script name"
+    )
+    short_name: str = Field(
+        default="Chordsequence",
+        description="Short name for display"
+    )
+    tap_note: int = Field(
+        default=90,
+        ge=0,
+        le=127,
+        description="MIDI note for tap tempo (0-127)"
+    )
+    tap_channel: int = Field(
+        default=16,
+        ge=1,
+        le=16,
+        description="MIDI channel for tap tempo (1-16)"
+    )
+    layout: int = Field(
+        default=2,
+        ge=0,
+        le=7,
+        description="Layout number (0-7)"
+    )
+
+
+class EncoderConfig(BaseModel):
+    """
+    Configuration for Mozaic file encoding.
+
+    Controls how the script text is encoded into the .mozaic file format
+    using NSKeyedArchiver.
+
+    Attributes:
+        use_foundation: Whether to use native Foundation framework (macOS only)
+        filename: Output filename for the .mozaic file
+        deduplicate_strings: Whether to deduplicate string objects
+        deduplicate_numbers: Whether to deduplicate number objects (critical for iPad!)
+    """
+    use_foundation: bool = Field(
+        default=False,
+        description="Use native Foundation framework (macOS only)"
+    )
+    filename: str = Field(
+        default="chordSequence.mozaic",
+        description="Output .mozaic filename"
+    )
+    deduplicate_strings: bool = Field(
+        default=True,
+        description="Deduplicate string objects in archive"
+    )
+    deduplicate_numbers: bool = Field(
+        default=True,
+        description="Deduplicate number objects (REQUIRED for iPad compatibility!)"
+    )
+
+    @field_validator('filename')
+    @classmethod
+    def validate_filename(cls, v: str) -> str:
+        """Ensure filename has .mozaic extension."""
+        if not v.endswith('.mozaic'):
+            return f"{v}.mozaic"
+        return v
+
+
+class ScriptContext(BaseModel):
+    """
+    Complete context for generating a Mozaic script.
+
+    This model brings together all the components needed to generate
+    a complete Mozaic chord sequence script.
+
+    Attributes:
+        songs: Collection of songs to include
+        metadata: Mozaic script metadata
+        encoder_config: Encoder configuration
+    """
+    songs: SongCollection = Field(
+        default_factory=SongCollection,
+        description="Song collection"
+    )
+    metadata: MozaicMetadata = Field(
+        default_factory=MozaicMetadata,
+        description="Script metadata"
+    )
+    encoder_config: EncoderConfig = Field(
+        default_factory=EncoderConfig,
+        description="Encoder configuration"
+    )
+
+    @computed_field
+    @property
+    def song_count(self) -> int:
+        """Return the number of songs in the context."""
+        return len(self.songs)
+
+    def to_template_context(self) -> dict:
+        """
+        Convert to dictionary suitable for template rendering.
+
+        Returns:
+            Dictionary with 'songs' list containing dicts with:
+            - title: str
+            - num_bars: int
+            - tempo: Optional[int]
+            - update_block: str (to be generated)
+        """
+        return {
+            'songs': [
+                {
+                    'title': song.title,
+                    'num_bars': song.num_bars,
+                    'tempo': song.tempo,
+                    'update_block': ''  # Will be filled by generator
+                }
+                for song in self.songs
+            ]
+        }

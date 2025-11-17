@@ -1,0 +1,164 @@
+{# Mozaic Chord Sequence Script Template #}
+{# This template generates a complete Mozaic script for chord sequence playback #}
+
+@OnLoad
+  Log {Chord Sequence}
+  SetShortName {Chordsequence}
+  ShowLayout 2
+  prevPad =0
+  SongNb = 0
+  SetKnobValue 0, 0
+  LabelKnob 0, {Bar -}
+  SetKnobValue 1, SongNb
+  LastKnob = 1
+  Call @OnKnobChange
+  Call @InitializeSong
+  LabelKnob 2, {-}
+  LabelKnob 3, {-}
+  LabelKnobs {Chord Sequence}
+  // Tap tempo settings
+  TapNote = 90
+  TapChannel = 16
+@End
+
+@StartTempoChange
+	minuteMs = 60000
+	quarterInterval = minuteMs / NewTempo
+	Log quarterInterval
+	SetTimerInterval quarterInterval
+	repeats = 0
+	StartTimer
+@End
+
+@OnTimer
+	repeats = repeats + 1
+	Log repeats
+	SendMIDINoteOn TapChannel, TapNote, 127
+	SendMIDINoteOff TapChannel, TapNote, 127
+	if repeats = 5
+		StopTimer
+		repeats = 0
+	endif
+@End
+
+@OnPadDown
+  Log {Pad }, LastPad
+  if LastPad = 7
+    Dec SongNb, 0
+    SetKnobValue 1, SongNb
+    LastKnob = 1
+    Call @OnKnobChange
+    Call @ClearPads
+  elseif LastPad = 15
+    Inc SongNb, 127
+    SetKnobValue 1, SongNb
+    LastKnob = 1
+    Call @OnKnobChange
+    Call @ClearPads
+  elseif LastPad = 0
+    Call @SetSongRhythm
+  endif
+@End
+
+@OnKnobChange
+  Log {Changed knob }, LastKnob
+  Log (GetKnobValue LastKnob)
+
+  if LastKnob = 1
+    SongNb = RoundDown GetKnobValue LastKnob
+    LabelKnob 1, {Song }, SongNb
+    Call @InitializeSong
+  endif
+@End
+
+{# Initialize Song Block - dynamically generated from songs list #}
+@InitializeSong
+{% for song in songs %}
+  {{ 'if' if loop.first else 'elseif' }} SongNb = {{ loop.index0 }}
+    LabelPads { {{- song.title -}} }
+    NbOfBars = {{ song.num_bars }}
+{% endfor %}
+  else
+    LabelPads {Unassigned}
+  endif
+@End
+
+{# Tempo/Rhythm Block - only for songs with tempo #}
+@SetSongRhythm
+{% set has_tempo = songs|selectattr('tempo', 'defined')|list|length > 0 %}
+{% if has_tempo %}
+{% for song in songs %}
+{% if song.tempo is not none %}
+  {{ 'if' if loop.first else 'elseif' }} SongNb = {{ loop.index0 }}
+    NewTempo = {{ song.tempo }}
+    Call @StartTempoChange
+{% endif %}
+{% endfor %}
+endif
+{% endif %}
+@End
+
+@ClearPads
+  for i = 0 to 15
+    LabelPad i, { }
+  endfor
+@End
+
+@Bar2PadColor
+  section = RoundDown bar/8
+  offset = 4
+  baseColor = offset + section
+  if baseColor > 7
+    baseColor = baseColor - 7
+  endif
+  nextColor = baseColor + 1
+  if nextColor > 7
+    nextColor = nextColor - 7
+  endif
+
+  for pad = 8 to 15
+    barInSection = bar - section*8
+    if pad - 8 > barInSection
+      ColorPad pad, baseColor
+    else
+      ColorPad pad, nextColor
+    endif
+  endfor
+@End
+
+{# Update Blocks - one per song #}
+{% for song in songs %}
+{{ song.update_block }}
+
+{% endfor %}
+
+{# OnNewBar - song selection logic #}
+@OnNewBar
+  bar = HostBar % NbOfBars
+  LabelKnob 0, {Bar }, bar + 1
+  SetKnobValue 0, 127*bar/(NbOfBars - 1)
+  Call @ClearPads
+{% for song in songs %}
+  {{ 'if' if loop.first else 'elseif' }} SongNb = {{ loop.index0 }}
+    Call @UpdateChordsSong{{ loop.index0 }}
+{% endfor %}
+  endif
+
+  Call @Bar2PadColor
+@End
+
+@OnNewBeat
+  ColorPad prevPad, 0
+  bar = HostBar % NbOfBars
+  beat = HostBeat
+
+  pad = beat*2
+  if beat = 0
+    ColorPad pad, 1
+    FlashPad pad
+  else
+    ColorPad pad, 3
+  endif
+
+  prevPad = pad
+@End

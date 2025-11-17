@@ -1,0 +1,19 @@
+# Core dependencies for chordSequence project
+
+# Data validation and settings management
+pydantic>=2.0.0
+
+# Template engine for Mozaic script generation
+jinja2>=3.1.0
+
+# Modern CLI framework
+click>=8.1.0
+
+# Optional: Code coverage for testing
+coverage>=7.0.0
+
+# Optional: Type checking (development)
+mypy>=1.0.0
+
+# macOS only: Native Foundation encoder support
+# pyobjc; sys_platform == 'darwin'
