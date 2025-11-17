@@ -1,0 +1,11 @@
+Saint James Infirmary
+tempo=80
+
+D-	A7/E
+D-/F	A7/E
+D-	E-7b5
+A7	B-7	Cdim	A7/C#
+D-	A7/E
+D-/C	G/B
+Bb7	A7
+D-	A7

@@ -1,0 +1,11 @@
+Nobody knows you
+tempo=100
+
+C	E7
+A7
+D-	A7
+D-
+F	F#dim
+C	A7
+D7
+G7

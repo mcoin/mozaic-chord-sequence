@@ -1,0 +1,79 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Test and generated files
+test_*.mozaic
+test_*.txt
+*_TEST.mozaic
+*_CLONE.mozaic
+*_FIXED.mozaic
+*_NEW.mozaic
+*_NEW2_bin.mozaic
+*_NEW_bin.mozaic
+*_NOTEST.mozaic
+*_TEEEST*.mozaic
+*_orig.mozaic
+*_orig.plist
+*_native_modified.mozaic
+*_pure*.mozaic
+simple_test.*
+tmp.*
+
+# Backup directories
+bckp/
+backup/
+backups/
+
+# Generated output (keep example outputs in a separate directory if needed)
+chordSequence10_*.mozaic
+chordSequence10_*.txt
+chordSequence11.*
+chordSequence2.*
+chordSequence8.*
+
+# Keep important example song files
+!songs/*.txt
+!README.md
+!CLAUDE.md
+!PURE_PYTHON_ENCODER.md
+
+# Temp files
+*.tmp
+.*.swp
