@@ -86,11 +86,48 @@ D7 G7 C G7
 ```bash
 # Install PyObjC for native encoding (optional, pure Python works too)
 pip3 install pyobjc
+
+# Optional: Install coverage for test coverage reports
+pip3 install coverage
 ```
 
 ### iPad
 
 Use any Python environment (Pythonista, Pyto, a-Shell). Only pure Python mode available (no additional dependencies needed).
+
+## Testing
+
+### Run Tests
+
+```bash
+# Simple test run
+python3 test_chordSequenceGenerator.py
+
+# Or use the test runner script
+./run_tests.sh
+
+# With coverage report
+pip3 install coverage
+coverage run --source=chordSequenceGenerator test_chordSequenceGenerator.py
+coverage report -m
+coverage html  # Generate HTML report in htmlcov/
+```
+
+### Test Coverage
+
+The test suite includes 29 unit tests covering:
+- Song file parsing (with/without tempo, error cases)
+- Update function generation
+- Initialize song block generation
+- Index file operations (read/write/resolve order)
+- Pure Python NSKeyedArchiver encoder
+  - String deduplication
+  - Number deduplication
+  - NSData wrapping
+  - Class metadata generation
+- Plist generation
+- Full script generation
+- End-to-end integration tests
 
 ## Dependencies
 
