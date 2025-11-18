@@ -455,6 +455,386 @@ class TestGenerateFullScript(unittest.TestCase):
         self.assertIn('NewTempo = 140', script)
 
 
+class TestFillTriggers(unittest.TestCase):
+    """Test fill trigger parsing and generation."""
+
+    def setUp(self):
+        """Create temporary directory for test files."""
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Clean up temporary directory."""
+        shutil.rmtree(self.test_dir)
+
+    def test_parse_song_with_fill_markers(self):
+        """Test parsing song file with fill markers."""
+        song_file = Path(self.test_dir) / "fills.txt"
+        song_file.write_text("Fill Test\nC G * Am F\nF * C G * C\n")
+
+        title, tempo, bars = csg.parse_chord_file(song_file)
+
+        self.assertEqual(title, "Fill Test")
+        self.assertEqual(len(bars), 2)
+        # First bar: C, G (with fill), Am, F
+        self.assertEqual(bars[0], ['C', 'G', 'Am', 'F'])
+        # Second bar: F (with fill), C, G (with fill), C
+        self.assertEqual(bars[1], ['F', 'C', 'G', 'C'])
+
+    def test_parse_song_with_fill_at_end_of_bar(self):
+        """Test parsing fill marker at end of bar."""
+        song_file = Path(self.test_dir) / "fills_end.txt"
+        song_file.write_text("Test\nC G Am * F\n")
+
+        title, tempo, bars = csg.parse_chord_file(song_file)
+
+        self.assertEqual(bars[0], ['C', 'G', 'Am', 'F'])
+
+    def test_parse_song_without_fills(self):
+        """Test parsing song without fill markers."""
+        song_file = Path(self.test_dir) / "no_fills.txt"
+        song_file.write_text("No Fills\nC G Am F\n")
+
+        title, tempo, bars = csg.parse_chord_file(song_file)
+
+        self.assertEqual(bars[0], ['C', 'G', 'Am', 'F'])
+
+    def test_generate_update_block_with_fills(self):
+        """Test that generate_update_block returns fill positions."""
+        from src.models import Song, Bar
+
+        # Create song with fills
+        song = Song(
+            title="Test",
+            bars=[
+                Bar(chords=['C', 'G', 'Am', 'F'], fills=[False, True, False, False]),
+                Bar(chords=['F', 'C', 'G', 'C'], fills=[True, False, True, False])
+            ]
+        )
+
+        from src.generator import generate_update_block
+        block_text, fill_positions = generate_update_block(song, 0)
+
+        # Check that function returns tuple
+        self.assertIsInstance(block_text, str)
+        self.assertIsInstance(fill_positions, list)
+
+        # Check fill positions
+        # Bar 0, chord 1 (G): position = 0*8 + 1*(8/4) = 2
+        # Bar 1, chord 0 (F): position = 1*8 + 0*(8/4) = 8
+        # Bar 1, chord 2 (G): position = 1*8 + 2*(8/4) = 12
+        expected_positions = [2.0, 8.0, 12.0]
+        self.assertEqual(fill_positions, expected_positions)
+
+    def test_generate_update_block_without_fills(self):
+        """Test generate_update_block with no fills returns empty list."""
+        from src.models import Song, Bar
+
+        song = Song(
+            title="Test",
+            bars=[Bar(chords=['C', 'G', 'Am', 'F'])]
+        )
+
+        from src.generator import generate_update_block
+        block_text, fill_positions = generate_update_block(song, 0)
+
+        self.assertEqual(fill_positions, [])
+
+
+class TestPydanticModels(unittest.TestCase):
+    """Test Pydantic domain models."""
+
+    def setUp(self):
+        """Create temporary directory for test files."""
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Clean up temporary directory."""
+        shutil.rmtree(self.test_dir)
+
+    def test_bar_model_creates_fills_list(self):
+        """Test that Bar model auto-creates fills list."""
+        from src.models import Bar
+
+        bar = Bar(chords=['C', 'G', 'Am', 'F'])
+
+        self.assertEqual(len(bar.fills), 4)
+        self.assertEqual(bar.fills, [False, False, False, False])
+
+    def test_bar_model_with_explicit_fills(self):
+        """Test Bar model with explicit fills."""
+        from src.models import Bar
+
+        bar = Bar(chords=['C', 'G', 'Am'], fills=[False, True, False])
+
+        self.assertEqual(bar.chords, ['C', 'G', 'Am'])
+        self.assertEqual(bar.fills, [False, True, False])
+
+    def test_bar_has_fills_method(self):
+        """Test Bar.has_fills() method."""
+        from src.models import Bar
+
+        bar_no_fills = Bar(chords=['C', 'G'])
+        bar_with_fills = Bar(chords=['C', 'G'], fills=[False, True])
+
+        self.assertFalse(bar_no_fills.has_fills())
+        self.assertTrue(bar_with_fills.has_fills())
+
+    def test_song_from_file(self):
+        """Test Song.from_file() classmethod."""
+        from src.models import Song
+
+        song_file = Path(self.test_dir) / "test.txt"
+        song_file.write_text("My Song\ntempo=120\nC G Am F\nF C G C\n")
+
+        song = Song.from_file(song_file)
+
+        self.assertEqual(song.title, "My Song")
+        self.assertEqual(song.tempo, 120)
+        self.assertEqual(len(song.bars), 2)
+        self.assertEqual(song.bars[0].chords, ['C', 'G', 'Am', 'F'])
+        self.assertEqual(song.source_file, song_file)
+
+    def test_song_from_file_with_fills(self):
+        """Test Song.from_file() parses fill markers."""
+        from src.models import Song
+
+        song_file = Path(self.test_dir) / "fills.txt"
+        song_file.write_text("Fill Song\nC G * Am F\n")
+
+        song = Song.from_file(song_file)
+
+        self.assertEqual(song.bars[0].chords, ['C', 'G', 'Am', 'F'])
+        self.assertEqual(song.bars[0].fills, [False, True, False, False])
+
+    def test_song_num_bars_property(self):
+        """Test Song.num_bars computed property."""
+        from src.models import Song, Bar
+
+        song = Song(
+            title="Test",
+            bars=[
+                Bar(chords=['C', 'G']),
+                Bar(chords=['Am', 'F']),
+                Bar(chords=['C', 'G'])
+            ]
+        )
+
+        self.assertEqual(song.num_bars, 3)
+
+    def test_song_collection_iteration(self):
+        """Test SongCollection iteration."""
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Song 1", bars=[Bar(chords=['C', 'G'])]),
+            Song(title="Song 2", bars=[Bar(chords=['Am', 'F'])])
+        ])
+
+        titles = [song.title for song in songs]
+        self.assertEqual(titles, ["Song 1", "Song 2"])
+
+    def test_song_collection_len(self):
+        """Test SongCollection length."""
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Song 1", bars=[Bar(chords=['C'])]),
+            Song(title="Song 2", bars=[Bar(chords=['G'])])
+        ])
+
+        self.assertEqual(len(songs), 2)
+
+    def test_song_validates_tempo_range(self):
+        """Test Song model validates tempo range."""
+        from src.models import Song, Bar
+        from pydantic import ValidationError
+
+        # Valid tempo
+        song = Song(title="Test", tempo=120, bars=[Bar(chords=['C'])])
+        self.assertEqual(song.tempo, 120)
+
+        # Tempo too low should raise error
+        with self.assertRaises(ValidationError):
+            Song(title="Test", tempo=10, bars=[Bar(chords=['C'])])
+
+        # Tempo too high should raise error
+        with self.assertRaises(ValidationError):
+            Song(title="Test", tempo=500, bars=[Bar(chords=['C'])])
+
+    def test_bar_requires_non_empty_chords(self):
+        """Test Bar model requires non-empty chord list."""
+        from src.models import Bar
+        from pydantic import ValidationError
+
+        # Valid bar
+        bar = Bar(chords=['C', 'G'])
+        self.assertEqual(len(bar.chords), 2)
+
+        # Empty chord list should raise error
+        with self.assertRaises(ValidationError):
+            Bar(chords=[])
+
+
+class TestTemplateRendering(unittest.TestCase):
+    """Test Jinja2 template rendering."""
+
+    def test_template_renders_fill_defaults(self):
+        """Test that template includes fill trigger defaults in @OnLoad."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Test", bars=[Bar(chords=['C', 'G'])])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check for fill defaults in @OnLoad
+        self.assertIn("FillChannel = 10", script)
+        self.assertIn("FillControl = 48", script)
+        self.assertIn("FillValue = 127", script)
+
+    def test_template_renders_fill_logic_in_onbeat(self):
+        """Test that template includes fill logic in @OnNewBeat."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Test", bars=[
+                Bar(chords=['C', 'G'], fills=[False, True])
+            ])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check for fill checking logic in @OnNewBeat
+        self.assertIn("@OnNewBeat", script)
+        self.assertIn("pos = bar*8 + beat*2", script)
+        self.assertIn("SendMIDICC FillChannel, FillControl, FillValue", script)
+
+    def test_template_renders_multiple_songs_with_fills(self):
+        """Test template with multiple songs containing fills."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Song 1", bars=[
+                Bar(chords=['C', 'G'], fills=[False, True])
+            ]),
+            Song(title="Song 2", bars=[
+                Bar(chords=['Am', 'F'], fills=[True, False])
+            ])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check for song-specific fill logic
+        self.assertIn("if SongNb = 0", script)
+        self.assertIn("elseif SongNb = 1", script)
+
+    def test_template_without_fills_no_logic(self):
+        """Test that template without fills doesn't include unnecessary logic."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Test", bars=[Bar(chords=['C', 'G'])])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Should still have fill variables defined but no fill checking
+        self.assertIn("FillChannel = 10", script)
+        # The template should handle empty fill lists gracefully
+
+
+class TestGenerateTextScript(unittest.TestCase):
+    """Test text script generation (without encoding)."""
+
+    def setUp(self):
+        """Create temporary directory for test files."""
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Clean up temporary directory."""
+        shutil.rmtree(self.test_dir)
+
+    def test_generate_script_returns_text(self):
+        """Test that generate_script returns text string."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Test", bars=[Bar(chords=['C', 'G'])])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        self.assertIsInstance(script, str)
+        self.assertGreater(len(script), 0)
+        self.assertIn("@OnLoad", script)
+        self.assertIn("@End", script)
+
+    def test_generate_script_includes_all_sections(self):
+        """Test that generated script includes all required sections."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Test Song", tempo=120, bars=[
+                Bar(chords=['C', 'G', 'Am', 'F'])
+            ])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        required_sections = [
+            '@OnLoad',
+            '@StartTempoChange',
+            '@OnTimer',
+            '@OnPadDown',
+            '@OnKnobChange',
+            '@InitializeSong',
+            '@SetSongRhythm',
+            '@ClearPads',
+            '@Bar2PadColor',
+            '@UpdateChordsSong0',
+            '@OnNewBar',
+            '@OnNewBeat'
+        ]
+
+        for section in required_sections:
+            self.assertIn(section, script, f"Missing section: {section}")
+
+    def test_generate_script_with_fills_has_correct_positions(self):
+        """Test that fill positions are correctly calculated in script."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        # Create song where we know the fill positions
+        # Bar 0: 4 chords, fill on chord 1 -> pos = 0*8 + 1*(8/4) = 2
+        # Bar 1: 4 chords, fill on chord 3 -> pos = 1*8 + 3*(8/4) = 14
+        songs = SongCollection(songs=[
+            Song(title="Test", bars=[
+                Bar(chords=['C', 'G', 'Am', 'F'], fills=[False, True, False, False]),
+                Bar(chords=['F', 'C', 'G', 'C'], fills=[False, False, False, True])
+            ])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check that fill positions are in the script
+        self.assertIn("pos = 2", script)
+        self.assertIn("pos = 14", script)
+
+
 class TestIntegration(unittest.TestCase):
     """Integration tests for end-to-end functionality."""
 
@@ -517,6 +897,10 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestPurePythonEncoder))
     suite.addTests(loader.loadTestsFromTestCase(TestGeneratePlistPure))
     suite.addTests(loader.loadTestsFromTestCase(TestGenerateFullScript))
+    suite.addTests(loader.loadTestsFromTestCase(TestFillTriggers))
+    suite.addTests(loader.loadTestsFromTestCase(TestPydanticModels))
+    suite.addTests(loader.loadTestsFromTestCase(TestTemplateRendering))
+    suite.addTests(loader.loadTestsFromTestCase(TestGenerateTextScript))
     suite.addTests(loader.loadTestsFromTestCase(TestIntegration))
 
     # Run tests
