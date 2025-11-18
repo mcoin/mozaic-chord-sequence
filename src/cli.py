@@ -312,6 +312,146 @@ def generate_single(song_file, output):
         sys.exit(1)
 
 
+@cli.command()
+@click.argument('song_files', nargs=-1, type=click.Path(exists=True, path_type=Path))
+@click.option(
+    '--output', '-o',
+    type=click.Path(path_type=Path),
+    default=Path('chordSequence.txt'),
+    help='Output text file',
+    show_default=True
+)
+@click.option(
+    '--directory', '-d',
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help='Load all song files from directory (*.txt)'
+)
+@click.option(
+    '--index-file',
+    type=click.Path(path_type=Path),
+    help=f'Song order index file (default: {DEFAULT_INDEX_FILE} in song directory)'
+)
+@click.option(
+    '--reset-index',
+    is_flag=True,
+    help='Ignore existing index and rebuild from scratch'
+)
+@click.option(
+    '--verbose', '-v',
+    is_flag=True,
+    help='Verbose output'
+)
+def generate_text(song_files, output, directory, index_file, reset_index, verbose):
+    """
+    Generate a text Mozaic script (without encoding to .mozaic).
+
+    Outputs just the script text from @OnLoad to the last @End,
+    suitable for viewing, debugging, or manual copy-paste into Mozaic.
+
+    Examples:
+    \b
+        # Generate from directory
+        chord-sequence generate-text -d songs/ -o script.txt
+
+        # Generate from specific files
+        chord-sequence generate-text song1.txt song2.txt
+
+        # Output to stdout
+        chord-sequence generate-text -d songs/ -o -
+    """
+    try:
+        songs_list = []
+
+        # Load from directory if specified
+        if directory:
+            if verbose:
+                click.echo(f"Loading songs from directory: {directory}")
+
+            # Determine index file path
+            if index_file is None:
+                index_file = directory / DEFAULT_INDEX_FILE
+
+            # Get all song files
+            song_file_paths = list(directory.glob("*.txt"))
+
+            if not song_file_paths:
+                click.echo(f"Error: No .txt files found in {directory}", err=True)
+                sys.exit(1)
+
+            # Resolve order using index
+            ordered_paths = resolve_song_order(
+                song_file_paths,
+                index_file=index_file,
+                reset=reset_index
+            )
+
+            if verbose:
+                click.echo(f"Found {len(ordered_paths)} song file(s)")
+
+            # Load songs
+            for path in ordered_paths:
+                try:
+                    song = Song.from_file(path)
+                    songs_list.append(song)
+                    if verbose:
+                        tempo_str = f" (tempo={song.tempo})" if song.tempo else ""
+                        click.echo(f"  ✓ {song.title}: {song.num_bars} bars{tempo_str}")
+                except Exception as e:
+                    click.echo(f"  ✗ Failed to load {path.name}: {e}", err=True)
+
+        # Load from individual files
+        elif song_files:
+            if verbose:
+                click.echo(f"Loading {len(song_files)} song file(s)")
+
+            for path in song_files:
+                try:
+                    song = Song.from_file(Path(path))
+                    songs_list.append(song)
+                    if verbose:
+                        tempo_str = f" (tempo={song.tempo})" if song.tempo else ""
+                        click.echo(f"  ✓ {song.title}: {song.num_bars} bars{tempo_str}")
+                except Exception as e:
+                    click.echo(f"  ✗ Failed to load {path}: {e}", err=True)
+
+        else:
+            click.echo("Error: Specify either song files or --directory", err=True)
+            click.echo("Try 'chord-sequence generate-text --help' for more information.")
+            sys.exit(1)
+
+        # Check if we loaded any songs
+        if not songs_list:
+            click.echo("Error: No valid songs loaded", err=True)
+            sys.exit(1)
+
+        # Create song collection
+        songs = SongCollection(songs=songs_list)
+
+        # Generate script text
+        if verbose:
+            click.echo(f"\nGenerating Mozaic script text...")
+
+        generator = ChordSequenceGenerator()
+        script_text = generator.generate_script(songs)
+
+        # Output to file or stdout
+        if str(output) == '-':
+            click.echo(script_text)
+        else:
+            with open(output, 'w', encoding='utf-8') as f:
+                f.write(script_text)
+            click.echo(f"✓ Created: {output}")
+            click.echo(f"  {len(songs)} song(s), {sum(s.num_bars for s in songs)} total bars")
+            click.echo(f"  {len(script_text.splitlines())} lines")
+
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+
+
 def main():
     """Main entry point for CLI."""
     cli()

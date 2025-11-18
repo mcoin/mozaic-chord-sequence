@@ -19,6 +19,10 @@
   // Tap tempo settings
   TapNote = 90
   TapChannel = 16
+  // Fill trigger settings
+  FillChannel = 10
+  FillControl = 48
+  FillValue = 127
 @End
 
 @StartTempoChange
@@ -161,4 +165,21 @@ endif
   endif
 
   prevPad = pad
+
+  // Check for fill triggers
+  pos = bar*8 + beat*2
+{% set has_fills = songs|selectattr('fill_positions')|list|length > 0 %}
+{% if has_fills %}
+{% for song in songs %}
+{% if song.fill_positions %}
+  {{ 'if' if loop.first else 'elseif' }} SongNb = {{ song.song_index }}
+{% for fill_pos in song.fill_positions %}
+    {{ 'if' if loop.first else 'elseif' }} pos = {{ '%g' % fill_pos if fill_pos != fill_pos|int else fill_pos|int }}
+      SendMIDICC FillChannel, FillControl, FillValue
+{% endfor %}
+    endif
+{% endif %}
+{% endfor %}
+  endif
+{% endif %}
 @End

@@ -42,7 +42,7 @@ pip3 install -r requirements.txt
 
 ### Main Commands
 
-#### `generate` - Create Mozaic files
+#### `generate` - Create binary .mozaic files
 
 ```bash
 # Generate from directory
@@ -76,11 +76,33 @@ pip3 install -r requirements.txt
 ./chord-sequence generate-single song.txt
 ```
 
+#### `generate-text` - Generate text script only
+
+Generate just the Mozaic script text (without encoding to .mozaic format):
+
+```bash
+# Generate to file
+./chord-sequence generate-text -d songs/ -o script.txt
+
+# Output to stdout
+./chord-sequence generate-text -d songs/ -o -
+
+# From specific files
+./chord-sequence generate-text song1.txt song2.txt
+```
+
+Useful for:
+- Viewing the generated script
+- Debugging
+- Manual copy-paste into Mozaic
+- Version control (text vs binary)
+
 ### Get Help
 
 ```bash
 ./chord-sequence --help
 ./chord-sequence generate --help
+./chord-sequence generate-text --help
 ```
 
 ## Song File Format
@@ -89,6 +111,7 @@ Each song file should contain:
 - **Line 1:** Song title
 - **Line 2 (optional):** `tempo=120` (BPM)
 - **Remaining lines:** One bar per line, chords separated by spaces
+- **Fill markers (optional):** Add ` *` after a chord to trigger a fill (MIDI CC message)
 
 ### Example
 
@@ -96,11 +119,28 @@ Each song file should contain:
 All of Me
 tempo=120
 C E7 A7
-Dm G7 C A7
+Dm G7 C * A7
 F Fm C A7
-D7 G7 C G7
+D7 * G7 C G7
 C E7 A7
 ...
+```
+
+### Fill Triggers
+
+Mark specific chords with ` *` (space before and after) to send MIDI CC messages when that chord position becomes active. This is useful for triggering fills, transitions, or other effects in your DAW or external gear.
+
+**Default Fill Settings (defined in @OnLoad):**
+- **Channel:** 10
+- **Control:** 48 (CC #48)
+- **Value:** 127
+
+Example with fills:
+```
+My Song
+tempo=120
+Cmaj7 Dm7 G7 *    // Fill on the last chord
+Am * Dm G7 C      // Fill on the first chord
 ```
 
 ## Project Structure

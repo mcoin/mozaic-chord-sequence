@@ -15,12 +15,15 @@ class Bar(BaseModel):
     Represents a single bar of chords.
 
     A bar contains one or more chords that will be displayed across
-    the bar's duration.
+    the bar's duration. Chords can be marked with fills for triggering
+    MIDI CC messages.
 
     Attributes:
         chords: List of chord symbols (e.g., ['Cmaj7', 'Dm7', 'G7'])
+        fills: List of boolean flags indicating which chords trigger fills
     """
     chords: List[str] = Field(min_length=1, description="Chord symbols in the bar")
+    fills: List[bool] = Field(default_factory=list, description="Fill markers for each chord")
 
     @field_validator('chords')
     @classmethod
@@ -30,6 +33,13 @@ class Bar(BaseModel):
             raise ValueError("All chords must be non-empty strings")
         return [chord.strip() for chord in v]
 
+    def model_post_init(self, __context):
+        """Ensure fills list matches chords list length."""
+        if not self.fills:
+            self.fills = [False] * len(self.chords)
+        elif len(self.fills) != len(self.chords):
+            raise ValueError("fills list must match chords list length")
+
     def __len__(self) -> int:
         """Return the number of chords in the bar."""
         return len(self.chords)
@@ -37,6 +47,10 @@ class Bar(BaseModel):
     def __getitem__(self, index: int) -> str:
         """Allow indexing into the bar's chords."""
         return self.chords[index]
+
+    def has_fills(self) -> bool:
+        """Check if this bar has any fill markers."""
+        return any(self.fills)
 
 
 class Song(BaseModel):
@@ -98,6 +112,7 @@ class Song(BaseModel):
         - Line 1: Song title
         - Line 2 (optional): tempo=120
         - Remaining lines: One bar per line, chords space-separated
+        - Chord followed by ' *' triggers a fill (e.g., "Cmaj7 *")
 
         Args:
             path: Path to the song chord file
@@ -126,12 +141,38 @@ class Song(BaseModel):
                 raise ValueError(f"Invalid tempo format in file: {path}")
             bar_start_index = 2
 
-        # Parse bars
+        # Parse bars with fill markers
         bar_lines = lines[bar_start_index:]
         if not bar_lines:
             raise ValueError(f"No bars found in song file: {path}")
 
-        bars = [Bar(chords=line.split()) for line in bar_lines]
+        bars = []
+        for line in bar_lines:
+            tokens = line.split()
+            chords = []
+            fills = []
+
+            i = 0
+            while i < len(tokens):
+                token = tokens[i]
+
+                # Check if next token is a fill marker
+                if i + 1 < len(tokens) and tokens[i + 1] == '*':
+                    chords.append(token)
+                    fills.append(True)
+                    i += 2  # Skip the '*'
+                elif token == '*':
+                    # Standalone '*' - attach to previous chord
+                    if chords and not fills[-1]:
+                        fills[-1] = True
+                    i += 1
+                else:
+                    chords.append(token)
+                    fills.append(False)
+                    i += 1
+
+            if chords:  # Only create bar if it has chords
+                bars.append(Bar(chords=chords, fills=fills))
 
         return cls(
             title=title,
@@ -212,6 +253,9 @@ class MozaicMetadata(BaseModel):
         tap_note: MIDI note for tap tempo
         tap_channel: MIDI channel for tap tempo
         layout: Layout number to display
+        fill_channel: MIDI channel for fill triggers
+        fill_control: MIDI CC number for fill triggers
+        fill_value: MIDI CC value for fill triggers
     """
     script_name: str = Field(
         default="Chord Sequence",
@@ -238,6 +282,24 @@ class MozaicMetadata(BaseModel):
         ge=0,
         le=7,
         description="Layout number (0-7)"
+    )
+    fill_channel: int = Field(
+        default=10,
+        ge=1,
+        le=16,
+        description="MIDI channel for fill triggers (1-16)"
+    )
+    fill_control: int = Field(
+        default=48,
+        ge=0,
+        le=127,
+        description="MIDI CC number for fill triggers (0-127)"
+    )
+    fill_value: int = Field(
+        default=127,
+        ge=0,
+        le=127,
+        description="MIDI CC value for fill triggers (0-127)"
     )
 
 

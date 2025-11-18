@@ -12,7 +12,7 @@ from .templates import TemplateManager
 from .encoders import MozaicEncoder, create_mozaic_file
 
 
-def generate_update_block(song: Song, song_index: int) -> str:
+def generate_update_block(song: Song, song_index: int) -> tuple[str, list[float]]:
     """
     Generate the @UpdateChordsSong{n} block for a song.
 
@@ -24,11 +24,13 @@ def generate_update_block(song: Song, song_index: int) -> str:
         song_index: Zero-based index of the song
 
     Returns:
-        Mozaic script block as string (e.g., '@UpdateChordsSong0\\n  ...\\n@End')
+        Tuple of (block_text, fill_positions)
+        - block_text: Mozaic script block as string
+        - fill_positions: List of positions where fills should trigger
 
     Example:
         >>> song = Song(title="Test", bars=[Bar(chords=["C", "F", "G"])])
-        >>> block = generate_update_block(song, 0)
+        >>> block, fills = generate_update_block(song, 0)
         >>> "@UpdateChordsSong0" in block
         True
     """
@@ -36,8 +38,28 @@ def generate_update_block(song: Song, song_index: int) -> str:
     bars_with_repeat = list(song.bars) + [song.bars[0]]
 
     lines = [f"@UpdateChordsSong{song_index}"]
+
+    # Collect fill positions for this song
+    fill_positions = []
     pad_index = 0
 
+    for bar_idx, bar in enumerate(song.bars):
+        if not bar.chords:
+            pad_index += 1
+            continue
+
+        num_chords = len(bar)
+        for i, (chord, has_fill) in enumerate(zip(bar.chords, bar.fills)):
+            if has_fill:
+                # Calculate beat offset within the bar
+                beat_offset = i * (8 / num_chords)
+                pos_val = pad_index * 8 + beat_offset
+                fill_positions.append(pos_val)
+
+        pad_index += 1
+
+    # Generate chord labels
+    pad_index = 0
     for bar in bars_with_repeat:
         if not bar.chords:
             pad_index += 1
@@ -60,7 +82,7 @@ def generate_update_block(song: Song, song_index: int) -> str:
         pad_index += 1
 
     lines.append("@End\n")
-    return "\n".join(lines)
+    return "\n".join(lines), fill_positions
 
 
 class ChordSequenceGenerator:
@@ -112,14 +134,16 @@ class ChordSequenceGenerator:
         template_songs = []
 
         for idx, song in enumerate(songs):
-            # Generate update block for this song
-            update_block = generate_update_block(song, idx)
+            # Generate update block and get fill positions
+            update_block, fill_positions = generate_update_block(song, idx)
 
             template_songs.append({
                 'title': song.title,
                 'num_bars': song.num_bars,
                 'tempo': song.tempo,
-                'update_block': update_block
+                'update_block': update_block,
+                'fill_positions': fill_positions,
+                'song_index': idx
             })
 
         # Render template

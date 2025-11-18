@@ -1,0 +1,5 @@
+Test Fills Song
+tempo=120
+C F G * G
+Am * Dm E7 E7
+C * F * G * C *

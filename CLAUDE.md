@@ -13,8 +13,11 @@ This repository contains a modern, refactored Python toolkit for generating Moza
 ### Generate Chord Sequence
 
 ```bash
-# Modern CLI (recommended)
+# Modern CLI - Binary .mozaic file (recommended)
 ./chord-sequence generate -d songs/ -o output.mozaic -v
+
+# Modern CLI - Text script only
+./chord-sequence generate-text -d songs/ -o script.txt
 
 # Legacy interface (backward compatible)
 python3 chordSequenceGenerator.py -d songs/ -o output.mozaic
@@ -107,7 +110,8 @@ NSKeyedArchiver implementations:
 
 Modern Click-based CLI with commands:
 
-- `generate` - Main generation command
+- `generate` - Main generation command (binary .mozaic output)
+- `generate-text` - Generate text script only (no encoding)
 - `validate` - Validate song files
 - `list-songs` - Show song order
 - `generate-single` - Quick single-song generation
@@ -137,7 +141,7 @@ Each `.txt` file in `songs/` directory:
 All of Me
 tempo=120
 C E7 A7
-Dm G7 C A7
+Dm G7 C * A7
 F Fm C A7
 ...
 ```
@@ -145,8 +149,25 @@ F Fm C A7
 - **Line 1**: Song title
 - **Line 2 (optional)**: `tempo=120`
 - **Remaining lines**: One bar per line, space-separated chords
+- **Fill markers (optional)**: Add ` *` after a chord to trigger MIDI CC
 
 Empty lines create empty bars. Multiple chords per bar are distributed evenly across 8 subdivisions.
+
+### Fill Triggers
+
+Chords marked with ` *` (space before and after) trigger MIDI CC messages when active:
+- Sends `SendMIDICC FillChannel, FillControl, FillValue`
+- Default values: Channel=10, Control=48, Value=127
+- Defined in @OnLoad section of generated script
+- Useful for triggering fills, transitions, or effects
+
+Example:
+```
+My Song
+tempo=120
+Cmaj7 Dm7 G7 *    // Fill at end of bar
+Am * Dm G7 C      // Fill at start of bar
+```
 
 ## Song Ordering
 

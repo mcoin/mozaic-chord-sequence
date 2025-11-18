@@ -70,8 +70,8 @@ def generate_update_function(song_nb: int, bars: List[List[str]]) -> Tuple[str, 
         bars=bar_models
     )
 
-    # Generate update block
-    block_text = _generate_update_block(temp_song, song_nb)
+    # Generate update block (returns tuple now, but we ignore fill_positions for backward compat)
+    block_text, _ = _generate_update_block(temp_song, song_nb)
 
     return (block_text, len(bars))
 
