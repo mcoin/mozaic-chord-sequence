@@ -6,7 +6,7 @@ Jinja2 templates for Mozaic scripts.
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Union
 from jinja2 import Environment, FileSystemLoader, Template, TemplateNotFound
 
 
@@ -22,7 +22,7 @@ class TemplateManager:
         env: Jinja2 Environment for template loading
     """
 
-    def __init__(self, template_dir: Path | str | None = None):
+    def __init__(self, template_dir: Optional[Union[Path, str]] = None):
         """
         Initialize the TemplateManager.
 
@@ -105,7 +105,7 @@ class TemplateManager:
         template = self.env.from_string(template_string)
         return template.render(**context)
 
-    def list_templates(self) -> list[str]:
+    def list_templates(self) -> List[str]:
         """
         List all available templates.
 
@@ -116,7 +116,7 @@ class TemplateManager:
 
 
 # Convenience function for quick rendering
-def render_chord_sequence(songs: list[Dict[str, Any]]) -> str:
+def render_chord_sequence(songs: List[Dict[str, Any]]) -> str:
     """
     Render the chord sequence template with the given songs.
 

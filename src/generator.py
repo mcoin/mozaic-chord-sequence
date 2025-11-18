@@ -6,13 +6,13 @@ sequence scripts from song files.
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from .models import Song, SongCollection, Bar, ScriptContext
 from .templates import TemplateManager
 from .encoders import MozaicEncoder, create_mozaic_file
 
 
-def generate_update_block(song: Song, song_index: int) -> tuple[str, list[float]]:
+def generate_update_block(song: Song, song_index: int) -> Tuple[str, List[float]]:
     """
     Generate the @UpdateChordsSong{n} block for a song.
 
