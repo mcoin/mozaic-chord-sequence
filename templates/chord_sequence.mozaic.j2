@@ -23,6 +23,11 @@
   FillChannel = 10
   FillControl = 48
   FillValue = 127
+  // Rhythm selection settings
+  RhythmSetChannel = 9
+  RhythmBankCC = 31
+  RhythmCC = 32
+  RhythmSetDelay = 1000
 @End
 
 @StartTempoChange
@@ -87,9 +92,10 @@
   endif
 @End
 
-{# Tempo/Rhythm Block - only for songs with tempo #}
+{# Tempo/Rhythm Block - for songs with tempo or rhythm #}
 @SetSongRhythm
 {% set has_tempo = songs|selectattr('tempo', 'defined')|list|length > 0 %}
+{% set has_rhythm = songs|selectattr('rhythm_bank', 'defined')|list|length > 0 %}
 {% if has_tempo %}
 {% for song in songs %}
 {% if song.tempo is not none %}
@@ -99,6 +105,18 @@
 {% endif %}
 {% endfor %}
 endif
+{% endif %}
+
+{% if has_rhythm %}
+  // Set rhythm bank and pattern
+{% for song in songs %}
+{% if song.rhythm_bank is not none and song.rhythm_number is not none %}
+  {{ 'if' if loop.first else 'elseif' }} SongNb = {{ loop.index0 }}
+    SendMIDICC RhythmSetChannel, RhythmBankCC, {{ song.rhythm_bank }}
+    SendMIDICC RhythmSetChannel, RhythmCC, {{ song.rhythm_number }}, RhythmSetDelay
+{% endif %}
+{% endfor %}
+  endif
 {% endif %}
 @End
 

@@ -675,6 +675,170 @@ class TestPydanticModels(unittest.TestCase):
             Bar(chords=[])
 
 
+class TestRhythmSelection(unittest.TestCase):
+    """Test rhythm selection feature."""
+
+    def setUp(self):
+        """Create temporary directory for test files."""
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Clean up temporary directory."""
+        shutil.rmtree(self.test_dir)
+
+    def test_parse_song_with_rhythm(self):
+        """Test parsing song file with rhythm line."""
+        song_file = Path(self.test_dir) / "rhythm_test.txt"
+        song_file.write_text("Rhythm Song\ntempo=120\nrhythm 1 2\nC G Am F\n")
+
+        title, tempo, bars = csg.parse_chord_file(song_file)
+
+        self.assertEqual(title, "Rhythm Song")
+        self.assertEqual(tempo, 120)
+        self.assertEqual(bars[0], ['C', 'G', 'Am', 'F'])
+
+    def test_parse_song_with_rhythm_no_tempo(self):
+        """Test parsing song with rhythm but no tempo."""
+        song_file = Path(self.test_dir) / "rhythm_no_tempo.txt"
+        song_file.write_text("Rhythm Song\nrhythm 3 5\nC G Am F\n")
+
+        title, tempo, bars = csg.parse_chord_file(song_file)
+
+        self.assertEqual(title, "Rhythm Song")
+        self.assertIsNone(tempo)
+        self.assertEqual(bars[0], ['C', 'G', 'Am', 'F'])
+
+    def test_song_from_file_with_rhythm(self):
+        """Test Song.from_file() parses rhythm correctly."""
+        from src.models import Song
+
+        song_file = Path(self.test_dir) / "rhythm.txt"
+        song_file.write_text("Test Rhythm\ntempo=120\nrhythm 1 2\nC G Am F\n")
+
+        song = Song.from_file(song_file)
+
+        self.assertEqual(song.title, "Test Rhythm")
+        self.assertEqual(song.tempo, 120)
+        self.assertEqual(song.rhythm_bank, 1)
+        self.assertEqual(song.rhythm_number, 2)
+        self.assertTrue(song.has_rhythm)
+
+    def test_song_without_rhythm(self):
+        """Test Song without rhythm has None values."""
+        from src.models import Song
+
+        song_file = Path(self.test_dir) / "no_rhythm.txt"
+        song_file.write_text("No Rhythm\nC G Am F\n")
+
+        song = Song.from_file(song_file)
+
+        self.assertIsNone(song.rhythm_bank)
+        self.assertIsNone(song.rhythm_number)
+        self.assertFalse(song.has_rhythm)
+
+    def test_invalid_rhythm_format(self):
+        """Test that invalid rhythm format raises error."""
+        from src.models import Song
+
+        song_file = Path(self.test_dir) / "bad_rhythm.txt"
+        song_file.write_text("Bad Rhythm\nrhythm 1\nC G\n")
+
+        with self.assertRaises(ValueError) as context:
+            Song.from_file(song_file)
+        self.assertIn("rhythm", str(context.exception).lower())
+
+    def test_rhythm_values_in_range(self):
+        """Test that rhythm bank and number are validated."""
+        from src.models import Song, Bar
+        from pydantic import ValidationError
+
+        # Valid rhythm values
+        song = Song(
+            title="Test",
+            rhythm_bank=10,
+            rhythm_number=20,
+            bars=[Bar(chords=['C'])]
+        )
+        self.assertEqual(song.rhythm_bank, 10)
+        self.assertEqual(song.rhythm_number, 20)
+
+        # Invalid rhythm bank (negative)
+        with self.assertRaises(ValidationError):
+            Song(
+                title="Test",
+                rhythm_bank=-1,
+                rhythm_number=20,
+                bars=[Bar(chords=['C'])]
+            )
+
+        # Invalid rhythm number (> 127)
+        with self.assertRaises(ValidationError):
+            Song(
+                title="Test",
+                rhythm_bank=10,
+                rhythm_number=200,
+                bars=[Bar(chords=['C'])]
+            )
+
+    def test_template_renders_rhythm_defaults(self):
+        """Test that template includes rhythm defaults in @OnLoad."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Test", bars=[Bar(chords=['C', 'G'])])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check for rhythm defaults in @OnLoad
+        self.assertIn("RhythmSetChannel = 9", script)
+        self.assertIn("RhythmBankCC = 31", script)
+        self.assertIn("RhythmCC = 32", script)
+        self.assertIn("RhythmSetDelay = 1000", script)
+
+    def test_template_renders_rhythm_selection(self):
+        """Test that template includes rhythm selection in @SetSongRhythm."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(
+                title="Test",
+                rhythm_bank=1,
+                rhythm_number=2,
+                bars=[Bar(chords=['C', 'G'])]
+            )
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check for rhythm selection in @SetSongRhythm
+        self.assertIn("SendMIDICC RhythmSetChannel, RhythmBankCC, 1", script)
+        self.assertIn("SendMIDICC RhythmSetChannel, RhythmCC, 2, RhythmSetDelay", script)
+
+    def test_template_multiple_songs_with_rhythm(self):
+        """Test template with multiple songs having different rhythms."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Song 1", rhythm_bank=1, rhythm_number=2, bars=[Bar(chords=['C'])]),
+            Song(title="Song 2", rhythm_bank=3, rhythm_number=5, bars=[Bar(chords=['G'])])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check for both rhythm selections
+        self.assertIn("if SongNb = 0", script)
+        self.assertIn("SendMIDICC RhythmSetChannel, RhythmBankCC, 1", script)
+        self.assertIn("elseif SongNb = 1", script)
+        self.assertIn("SendMIDICC RhythmSetChannel, RhythmBankCC, 3", script)
+
+
 class TestTemplateRendering(unittest.TestCase):
     """Test Jinja2 template rendering."""
 
@@ -899,6 +1063,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestGenerateFullScript))
     suite.addTests(loader.loadTestsFromTestCase(TestFillTriggers))
     suite.addTests(loader.loadTestsFromTestCase(TestPydanticModels))
+    suite.addTests(loader.loadTestsFromTestCase(TestRhythmSelection))
     suite.addTests(loader.loadTestsFromTestCase(TestTemplateRendering))
     suite.addTests(loader.loadTestsFromTestCase(TestGenerateTextScript))
     suite.addTests(loader.loadTestsFromTestCase(TestIntegration))

@@ -63,6 +63,8 @@ class Song(BaseModel):
     Attributes:
         title: Song title
         tempo: Optional tempo in BPM (beats per minute)
+        rhythm_bank: Optional rhythm bank number (0-127)
+        rhythm_number: Optional rhythm pattern number (0-127)
         bars: List of bars, each containing chord symbols
         source_file: Optional source file path
     """
@@ -72,6 +74,18 @@ class Song(BaseModel):
         ge=20,
         le=300,
         description="Tempo in BPM (20-300)"
+    )
+    rhythm_bank: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=127,
+        description="Rhythm bank (0-127)"
+    )
+    rhythm_number: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=127,
+        description="Rhythm pattern number (0-127)"
     )
     bars: List[Bar] = Field(min_length=1, description="Bars of chord sequences")
     source_file: Optional[Path] = Field(
@@ -90,6 +104,12 @@ class Song(BaseModel):
     def has_tempo(self) -> bool:
         """Check if the song has a tempo defined."""
         return self.tempo is not None
+
+    @computed_field
+    @property
+    def has_rhythm(self) -> bool:
+        """Check if the song has rhythm bank and number defined."""
+        return self.rhythm_bank is not None and self.rhythm_number is not None
 
     def get_update_block_name(self, song_index: int) -> str:
         """
@@ -111,6 +131,7 @@ class Song(BaseModel):
         File format:
         - Line 1: Song title
         - Line 2 (optional): tempo=120
+        - Line 3 (optional): rhythm <bank> <number>
         - Remaining lines: One bar per line, chords space-separated
         - Chord followed by ' *' triggers a fill (e.g., "Cmaj7 *")
 
@@ -131,6 +152,8 @@ class Song(BaseModel):
 
         title = lines[0]
         tempo = None
+        rhythm_bank = None
+        rhythm_number = None
         bar_start_index = 1
 
         # Detect optional tempo line
@@ -140,6 +163,18 @@ class Song(BaseModel):
             except ValueError:
                 raise ValueError(f"Invalid tempo format in file: {path}")
             bar_start_index = 2
+
+        # Detect optional rhythm line
+        if len(lines) > bar_start_index and lines[bar_start_index].lower().startswith("rhythm "):
+            try:
+                parts = lines[bar_start_index].split()
+                if len(parts) != 3:
+                    raise ValueError(f"Invalid rhythm format (expected 'rhythm <bank> <number>'): {path}")
+                rhythm_bank = int(parts[1])
+                rhythm_number = int(parts[2])
+            except ValueError as e:
+                raise ValueError(f"Invalid rhythm format in file: {path} - {e}")
+            bar_start_index += 1
 
         # Parse bars with fill markers
         bar_lines = lines[bar_start_index:]
@@ -177,6 +212,8 @@ class Song(BaseModel):
         return cls(
             title=title,
             tempo=tempo,
+            rhythm_bank=rhythm_bank,
+            rhythm_number=rhythm_number,
             bars=bars,
             source_file=path
         )
@@ -256,6 +293,10 @@ class MozaicMetadata(BaseModel):
         fill_channel: MIDI channel for fill triggers
         fill_control: MIDI CC number for fill triggers
         fill_value: MIDI CC value for fill triggers
+        rhythm_set_channel: MIDI channel for rhythm selection
+        rhythm_bank_cc: MIDI CC number for rhythm bank
+        rhythm_cc: MIDI CC number for rhythm pattern
+        rhythm_set_delay: Delay in ms before sending rhythm CC
     """
     script_name: str = Field(
         default="Chord Sequence",
@@ -300,6 +341,29 @@ class MozaicMetadata(BaseModel):
         ge=0,
         le=127,
         description="MIDI CC value for fill triggers (0-127)"
+    )
+    rhythm_set_channel: int = Field(
+        default=9,
+        ge=1,
+        le=16,
+        description="MIDI channel for rhythm selection (1-16)"
+    )
+    rhythm_bank_cc: int = Field(
+        default=31,
+        ge=0,
+        le=127,
+        description="MIDI CC number for rhythm bank (0-127)"
+    )
+    rhythm_cc: int = Field(
+        default=32,
+        ge=0,
+        le=127,
+        description="MIDI CC number for rhythm pattern (0-127)"
+    )
+    rhythm_set_delay: int = Field(
+        default=1000,
+        ge=0,
+        description="Delay in ms before sending rhythm CC (0+)"
     )
 
 

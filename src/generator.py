@@ -141,6 +141,8 @@ class ChordSequenceGenerator:
                 'title': song.title,
                 'num_bars': song.num_bars,
                 'tempo': song.tempo,
+                'rhythm_bank': song.rhythm_bank,
+                'rhythm_number': song.rhythm_number,
                 'update_block': update_block,
                 'fill_positions': fill_positions,
                 'song_index': idx
