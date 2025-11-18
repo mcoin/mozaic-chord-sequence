@@ -8,4 +8,4 @@ A7	B-7	Cdim	A7/C#
 D-	A7/E
 D-/C	G/B
 Bb7	A7
-D-	A7
+D-	A7 *

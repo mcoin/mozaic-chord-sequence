@@ -8,4 +8,4 @@ D-
 F	F#dim
 C	A7
 D7
-G7
+G7 *

@@ -10,11 +10,11 @@ E-	E-/D	E-/Db	E-/B
 C9		E-
 A-6		E-/G
 C9	C9	B7sus4	B7
-E-	E-/D	E-/Db	E-/B
+E- *	E-/D	E-/Db	E-/B
 
 E-	E-/D	E-/Db	E-/B
 A-6		E-
 C9		E-
 A-6		E-
 C9	C9	B7sus4	B7
-E-	E-/D	E-/Db	E-/B
+E- *	E-/D	E-/Db	E-/B
