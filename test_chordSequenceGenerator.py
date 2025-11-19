@@ -793,7 +793,7 @@ class TestRhythmSelection(unittest.TestCase):
         script = generator.generate_script(songs)
 
         # Check for rhythm defaults in @OnLoad
-        self.assertIn("RhythmSetChannel = 9", script)
+        self.assertIn("RhythmSetChannel = 10", script)
         self.assertIn("RhythmBankCC = 31", script)
         self.assertIn("RhythmCC = 32", script)
         self.assertIn("RhythmSetDelay = 1000", script)
@@ -815,9 +815,9 @@ class TestRhythmSelection(unittest.TestCase):
         generator = ChordSequenceGenerator()
         script = generator.generate_script(songs)
 
-        # Check for rhythm selection in @SetSongRhythm
-        self.assertIn("SendMIDICC RhythmSetChannel, RhythmBankCC, 1", script)
-        self.assertIn("SendMIDICC RhythmSetChannel, RhythmCC, 2, RhythmSetDelay", script)
+        # Check for rhythm selection in @SetSongRhythm (with - 1 for 0-based MIDI channel)
+        self.assertIn("SendMIDICC RhythmSetChannel - 1, RhythmBankCC, 1", script)
+        self.assertIn("SendMIDICC RhythmSetChannel - 1, RhythmCC, 2, RhythmSetDelay", script)
 
     def test_template_multiple_songs_with_rhythm(self):
         """Test template with multiple songs having different rhythms."""
@@ -832,11 +832,11 @@ class TestRhythmSelection(unittest.TestCase):
         generator = ChordSequenceGenerator()
         script = generator.generate_script(songs)
 
-        # Check for both rhythm selections
+        # Check for both rhythm selections (with - 1 for 0-based MIDI channel)
         self.assertIn("if SongNb = 0", script)
-        self.assertIn("SendMIDICC RhythmSetChannel, RhythmBankCC, 1", script)
+        self.assertIn("SendMIDICC RhythmSetChannel - 1, RhythmBankCC, 1", script)
         self.assertIn("elseif SongNb = 1", script)
-        self.assertIn("SendMIDICC RhythmSetChannel, RhythmBankCC, 3", script)
+        self.assertIn("SendMIDICC RhythmSetChannel - 1, RhythmBankCC, 3", script)
 
 
 class TestTemplateRendering(unittest.TestCase):
@@ -873,10 +873,10 @@ class TestTemplateRendering(unittest.TestCase):
         generator = ChordSequenceGenerator()
         script = generator.generate_script(songs)
 
-        # Check for fill checking logic in @OnNewBeat
+        # Check for fill checking logic in @OnNewBeat (with - 1 for 0-based MIDI channel)
         self.assertIn("@OnNewBeat", script)
         self.assertIn("pos = bar*8 + beat*2", script)
-        self.assertIn("SendMIDICC FillChannel, FillControl, FillValue", script)
+        self.assertIn("SendMIDICC FillChannel - 1, FillControl, FillValue", script)
 
     def test_template_renders_multiple_songs_with_fills(self):
         """Test template with multiple songs containing fills."""

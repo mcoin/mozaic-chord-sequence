@@ -343,7 +343,7 @@ class MozaicMetadata(BaseModel):
         description="MIDI CC value for fill triggers (0-127)"
     )
     rhythm_set_channel: int = Field(
-        default=9,
+        default=10,
         ge=1,
         le=16,
         description="MIDI channel for rhythm selection (1-16)"
