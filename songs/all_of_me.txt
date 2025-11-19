@@ -1,5 +1,6 @@
 All of Me
 tempo=120
+rhythm 1 0
 
 C6	
 C6	

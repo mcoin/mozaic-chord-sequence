@@ -1,5 +1,6 @@
 Deep River Blues
 tempo=100
+rhythm 1 8
 
 E
 Edim

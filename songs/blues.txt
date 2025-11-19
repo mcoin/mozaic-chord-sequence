@@ -1,5 +1,6 @@
 Some blues
 tempo=80
+rhythm 4 8
 
 F7
 F7
