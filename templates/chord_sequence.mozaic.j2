@@ -94,26 +94,24 @@
 
 {# Tempo/Rhythm Block - for songs with tempo or rhythm #}
 @SetSongRhythm
-{% set has_tempo = songs|selectattr('tempo', 'defined')|list|length > 0 %}
-{% set has_rhythm = songs|selectattr('rhythm_bank', 'defined')|list|length > 0 %}
-{% if has_tempo %}
+{% set songs_with_settings = [] %}
 {% for song in songs %}
-{% if song.tempo is not none %}
+{% if song.tempo is not none or (song.rhythm_bank is not none and song.rhythm_number is not none) %}
+{% set _ = songs_with_settings.append(song) %}
+{% endif %}
+{% endfor %}
+{% if songs_with_settings|length > 0 %}
+{% for song in songs %}
+{% if song.tempo is not none or (song.rhythm_bank is not none and song.rhythm_number is not none) %}
   {{ 'if' if loop.first else 'elseif' }} SongNb = {{ loop.index0 }}
+{% if song.tempo is not none %}
     NewTempo = {{ song.tempo }}
     Call @StartTempoChange
 {% endif %}
-{% endfor %}
-endif
-{% endif %}
-
-{% if has_rhythm %}
-  // Set rhythm bank and pattern
-{% for song in songs %}
 {% if song.rhythm_bank is not none and song.rhythm_number is not none %}
-  {{ 'if' if loop.first else 'elseif' }} SongNb = {{ loop.index0 }}
     SendMIDICC RhythmSetChannel, RhythmBankCC, {{ song.rhythm_bank }}
     SendMIDICC RhythmSetChannel, RhythmCC, {{ song.rhythm_number }}, RhythmSetDelay
+{% endif %}
 {% endif %}
 {% endfor %}
   endif
