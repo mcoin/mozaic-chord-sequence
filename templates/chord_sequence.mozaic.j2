@@ -17,14 +17,14 @@
   LabelKnob 3, {-}
   LabelKnobs {Chord Sequence}
   // Tap tempo settings
-  TapNote = 90
   TapChannel = 16
+  TapNote = 90
   // Fill trigger settings
   FillChannel = 10
   FillControl = 48
   FillValue = 127
   // Rhythm selection settings
-  RhythmSetChannel = 9
+  RhythmSetChannel = 10
   RhythmBankCC = 31
   RhythmCC = 32
   RhythmSetDelay = 1000
@@ -42,8 +42,8 @@
 @OnTimer
 	repeats = repeats + 1
 	Log repeats
-	SendMIDINoteOn TapChannel, TapNote, 127
-	SendMIDINoteOff TapChannel, TapNote, 127
+	SendMIDINoteOn TapChannel - 1, TapNote, 127
+	SendMIDINoteOff TapChannel - 1, TapNote, 127
 	if repeats = 5
 		StopTimer
 		repeats = 0
@@ -109,8 +109,8 @@
     Call @StartTempoChange
 {% endif %}
 {% if song.rhythm_bank is not none and song.rhythm_number is not none %}
-    SendMIDICC RhythmSetChannel, RhythmBankCC, {{ song.rhythm_bank }}
-    SendMIDICC RhythmSetChannel, RhythmCC, {{ song.rhythm_number }}, RhythmSetDelay
+    SendMIDICC RhythmSetChannel - 1, RhythmBankCC, {{ song.rhythm_bank }}
+    SendMIDICC RhythmSetChannel - 1, RhythmCC, {{ song.rhythm_number }}, RhythmSetDelay
 {% endif %}
 {% endif %}
 {% endfor %}
@@ -191,7 +191,7 @@
   {{ 'if' if loop.first else 'elseif' }} SongNb = {{ song.song_index }}
 {% for fill_pos in song.fill_positions %}
     {{ 'if' if loop.first else 'elseif' }} pos = {{ '%g' % fill_pos if fill_pos != fill_pos|int else fill_pos|int }}
-      SendMIDICC FillChannel, FillControl, FillValue
+      SendMIDICC FillChannel - 1, FillControl, FillValue
 {% endfor %}
     endif
 {% endif %}

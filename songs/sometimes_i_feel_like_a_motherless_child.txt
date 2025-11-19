@@ -1,6 +1,6 @@
 Sometimes I Feel Like A Motherless Child
 tempo=55
-rhythm 4 10
+rhythm 4 9
 
 E-	E-/D	E-/Db	E-/B
 E-	E-/D	E-/Db	E-/B

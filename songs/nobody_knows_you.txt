@@ -1,6 +1,6 @@
 Nobody knows you
 tempo=100
-rhythm 1 4
+rhythm 1 3
 
 C	E7
 A7
