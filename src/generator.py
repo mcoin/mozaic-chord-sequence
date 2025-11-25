@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple
 from .models import Song, SongCollection, Bar, ScriptContext
 from .templates import TemplateManager
 from .encoders import MozaicEncoder, create_mozaic_file
+from .chord_notes import midi_to_note_name
 
 
 def generate_update_block(song: Song, song_index: int) -> Tuple[str, List[float]]:
@@ -137,6 +138,31 @@ class ChordSequenceGenerator:
             # Generate update block and get fill positions
             update_block, fill_positions = generate_update_block(song, idx)
 
+            # Build chord structure for note playback
+            chord_structure = []
+            for bar_idx, bar in enumerate(song.bars):
+                bar_info = {
+                    'bar_index': bar_idx,
+                    'num_chords': len(bar.chords),
+                    'chords': []
+                }
+                for chord_idx, (chord_symbol, chord_notes, simplified_notes) in enumerate(
+                    zip(bar.chords, bar.chord_notes, bar.simplified_chord_notes)
+                ):
+                    # Convert MIDI notes to human-readable names
+                    note_names = [midi_to_note_name(midi) for midi in chord_notes] if chord_notes else []
+                    simplified_note_names = [midi_to_note_name(midi) for midi in simplified_notes] if simplified_notes else []
+
+                    bar_info['chords'].append({
+                        'chord_index': chord_idx,
+                        'chord_symbol': chord_symbol,
+                        'midi_notes': chord_notes,  # List of MIDI note numbers
+                        'note_names': note_names,    # List of note names (e.g., ['C3', 'E3', 'G3'])
+                        'simplified_midi_notes': simplified_notes,  # List of simplified MIDI note numbers
+                        'simplified_note_names': simplified_note_names  # List of simplified note names
+                    })
+                chord_structure.append(bar_info)
+
             template_songs.append({
                 'title': song.title,
                 'num_bars': song.num_bars,
@@ -145,7 +171,8 @@ class ChordSequenceGenerator:
                 'rhythm_number': song.rhythm_number,
                 'update_block': update_block,
                 'fill_positions': fill_positions,
-                'song_index': idx
+                'song_index': idx,
+                'chord_structure': chord_structure
             })
 
         # Render template

@@ -8,6 +8,7 @@ the application, replacing dictionary-based data structures.
 from pathlib import Path
 from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator, computed_field
+from .chord_notes import chord_to_midi_notes, chord_to_simplified_midi_notes
 
 
 class Bar(BaseModel):
@@ -21,9 +22,13 @@ class Bar(BaseModel):
     Attributes:
         chords: List of chord symbols (e.g., ['Cmaj7', 'Dm7', 'G7'])
         fills: List of boolean flags indicating which chords trigger fills
+        chord_notes: List of MIDI note lists for each chord (auto-populated)
+        simplified_chord_notes: List of simplified MIDI note lists for each chord (auto-populated)
     """
     chords: List[str] = Field(min_length=1, description="Chord symbols in the bar")
     fills: List[bool] = Field(default_factory=list, description="Fill markers for each chord")
+    chord_notes: List[List[int]] = Field(default_factory=list, description="MIDI notes for each chord")
+    simplified_chord_notes: List[List[int]] = Field(default_factory=list, description="Simplified MIDI notes for each chord")
 
     @field_validator('chords')
     @classmethod
@@ -34,11 +39,23 @@ class Bar(BaseModel):
         return [chord.strip() for chord in v]
 
     def model_post_init(self, __context):
-        """Ensure fills list matches chords list length."""
+        """Ensure fills, chord_notes, and simplified_chord_notes lists match chords list length."""
         if not self.fills:
             self.fills = [False] * len(self.chords)
         elif len(self.fills) != len(self.chords):
             raise ValueError("fills list must match chords list length")
+
+        # Populate chord_notes from chord symbols if not already set
+        if not self.chord_notes:
+            self.chord_notes = [chord_to_midi_notes(chord) for chord in self.chords]
+        elif len(self.chord_notes) != len(self.chords):
+            raise ValueError("chord_notes list must match chords list length")
+
+        # Populate simplified_chord_notes from chord symbols if not already set
+        if not self.simplified_chord_notes:
+            self.simplified_chord_notes = [chord_to_simplified_midi_notes(chord) for chord in self.chords]
+        elif len(self.simplified_chord_notes) != len(self.chords):
+            raise ValueError("simplified_chord_notes list must match chords list length")
 
     def __len__(self) -> int:
         """Return the number of chords in the bar."""

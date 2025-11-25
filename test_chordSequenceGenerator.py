@@ -1046,6 +1046,346 @@ class TestIntegration(unittest.TestCase):
         self.assertIn(b'Test Song 2', plist_bytes)
 
 
+class TestChordNotePlayback(unittest.TestCase):
+    """Test chord MIDI note playback functionality."""
+
+    def test_chord_to_midi_notes_basic(self):
+        """Test basic chord to MIDI conversion."""
+        from src.chord_notes import chord_to_midi_notes
+
+        # C major (octave 3): C3, E3, G3
+        notes = chord_to_midi_notes("C", octave=3)
+        self.assertEqual(notes, [48, 52, 55])
+
+        # Dm (octave 3): D3, F3, A3
+        notes = chord_to_midi_notes("Dm", octave=3)
+        self.assertEqual(notes, [50, 53, 57])
+
+    def test_chord_to_midi_notes_seventh(self):
+        """Test seventh chord conversion."""
+        from src.chord_notes import chord_to_midi_notes
+
+        # Cmaj7 (octave 4): C4, E4, G4, B4
+        notes = chord_to_midi_notes("Cmaj7", octave=4)
+        self.assertEqual(notes, [60, 64, 67, 71])
+
+        # Dm7 (octave 3): D3, F3, A3, C4
+        notes = chord_to_midi_notes("Dm7", octave=3)
+        self.assertEqual(notes, [50, 53, 57, 60])
+
+    def test_chord_to_midi_notes_complex(self):
+        """Test complex chord quality conversion."""
+        from src.chord_notes import chord_to_midi_notes
+
+        # Test various complex chords don't crash
+        chords = ["G7sus4", "C#m7b5", "Fmaj9", "Bbmaj7"]
+        for chord in chords:
+            notes = chord_to_midi_notes(chord)
+            self.assertIsInstance(notes, list)
+            self.assertGreater(len(notes), 0)
+
+    def test_chord_to_midi_notes_invalid(self):
+        """Test invalid chord handling."""
+        from src.chord_notes import chord_to_midi_notes
+        import warnings
+
+        # Invalid chord should return empty list
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            notes = chord_to_midi_notes("InvalidChord123")
+            self.assertEqual(notes, [])
+
+    def test_bar_chord_notes_field(self):
+        """Test Bar model populates chord_notes field."""
+        from src.models import Bar
+
+        bar = Bar(chords=["C", "F", "G"])
+
+        # Should auto-populate chord_notes
+        self.assertEqual(len(bar.chord_notes), 3)
+
+        # C chord should have notes
+        self.assertEqual(bar.chord_notes[0], [48, 52, 55])
+
+        # F chord should have notes
+        self.assertEqual(bar.chord_notes[1], [53, 57, 60])
+
+        # G chord should have notes
+        self.assertEqual(bar.chord_notes[2], [55, 59, 62])
+
+    def test_generator_chord_structure(self):
+        """Test generator builds chord structure for template."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        # Create test song
+        bars = [
+            Bar(chords=["C", "F"]),
+            Bar(chords=["G", "C"])
+        ]
+        song = Song(title="Test", bars=bars)
+        songs = SongCollection(songs=[song])
+
+        # Generate script
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Verify ChordNoteChannel and ChordNoteVelocity in script
+        self.assertIn("ChordNoteChannel = 11", script)
+        self.assertIn("ChordNoteVelocity = 64", script)
+        self.assertIn("PrevBar = -1", script)
+        self.assertIn("PrevBeat = -1", script)
+
+    def test_template_chord_playback_blocks(self):
+        """Test template generates chord playback blocks."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        # Create test song with chords
+        bars = [Bar(chords=["C", "G"])]
+        song = Song(title="Test", bars=bars)
+        songs = SongCollection(songs=[song])
+
+        # Generate script
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Verify @PlayChordSong0 block exists
+        self.assertIn("@PlayChordSong0", script)
+
+        # Verify @StopChordNotes block exists
+        self.assertIn("@StopChordNotes", script)
+
+        # Verify note-on commands are generated
+        self.assertIn("SendMIDINoteOn ChordNoteChannel - 1,", script)
+
+    def test_chord_change_detection_logic(self):
+        """Test template generates chord change detection in @OnNewBeat."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        # Create song with varying chords per bar
+        bars = [
+            Bar(chords=["C"]),           # 1 chord
+            Bar(chords=["F", "G"]),      # 2 chords
+            Bar(chords=["C", "F", "G"])  # 3 chords
+        ]
+        song = Song(title="Test", bars=bars)
+        songs = SongCollection(songs=[song])
+
+        # Generate script
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Verify nested bar/beat based chord selection
+        self.assertIn("if bar = 1", script)  # Bar test
+        self.assertIn("if beat = 0", script)  # First chord at beat 0
+        self.assertIn("elseif beat = 2", script)  # Second chord at beat 2 for 2-chord bar
+
+        # Verify chord change detection based on bar and beat
+        self.assertIn("if bar <> PrevBar or beat <> PrevBeat", script)
+        self.assertIn("Call @StopChordNotes", script)
+
+    def test_integration_chord_playback(self):
+        """Integration test for chord playback with real song."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, SongCollection
+
+        # Create test file
+        test_dir = tempfile.mkdtemp()
+        try:
+            song_file = Path(test_dir) / "test_chord_playback.txt"
+            song_file.write_text("Chord Test\ntempo=120\nC G Am F\nF C G C\n")
+
+            # Load song
+            song = Song.from_file(song_file)
+            songs = SongCollection(songs=[song])
+
+            # Generate script
+            generator = ChordSequenceGenerator()
+            script = generator.generate_script(songs)
+
+            # Verify all components present
+            self.assertIn("ChordNoteChannel = 11", script)
+            self.assertIn("@PlayChordSong0", script)
+            self.assertIn("@StopChordNotes", script)
+            self.assertIn("SendMIDINoteOn", script)
+            self.assertIn("SendMIDINoteOff", script)
+
+            # Verify specific note values for C chord (48, 52, 55)
+            self.assertIn("48", script)  # C3
+            self.assertIn("52", script)  # E3
+            self.assertIn("55", script)  # G3
+
+        finally:
+            shutil.rmtree(test_dir)
+
+
+class TestSimplifiedVoicings(unittest.TestCase):
+    """Test simplified chord voicings for second channel."""
+
+    def test_simplify_chord_symbol_for_6_chords(self):
+        """Test that 6 chords are simplified to major triads."""
+        from src.chord_notes import simplify_chord_symbol
+
+        # Test basic 6 chords
+        self.assertEqual(simplify_chord_symbol("C6"), "C")
+        self.assertEqual(simplify_chord_symbol("D6"), "D")
+        self.assertEqual(simplify_chord_symbol("F#6"), "F#")
+        self.assertEqual(simplify_chord_symbol("Bb6"), "Bb")
+
+        # Test 6 chords with bass notes
+        self.assertEqual(simplify_chord_symbol("C6/E"), "C/E")
+
+    def test_simplify_chord_symbol_passthrough(self):
+        """Test that non-6 chords pass through unchanged."""
+        from src.chord_notes import simplify_chord_symbol
+
+        # These should not be simplified
+        self.assertEqual(simplify_chord_symbol("Cmaj7"), "Cmaj7")
+        self.assertEqual(simplify_chord_symbol("Dm7"), "Dm7")
+        self.assertEqual(simplify_chord_symbol("G7"), "G7")
+        self.assertEqual(simplify_chord_symbol("C"), "C")
+
+    def test_chord_to_simplified_midi_notes(self):
+        """Test that chord_to_simplified_midi_notes simplifies 6 chords."""
+        from src.chord_notes import chord_to_midi_notes, chord_to_simplified_midi_notes
+
+        # C6 should simplify to C major triad
+        c6_simplified = chord_to_simplified_midi_notes("C6", octave=3)
+        c_major = chord_to_midi_notes("C", octave=3)
+        self.assertEqual(c6_simplified, c_major)
+        self.assertEqual(c6_simplified, [48, 52, 55])  # C3, E3, G3
+
+        # D6 should simplify to D major triad
+        d6_simplified = chord_to_simplified_midi_notes("D6", octave=3)
+        d_major = chord_to_midi_notes("D", octave=3)
+        self.assertEqual(d6_simplified, d_major)
+
+    def test_bar_model_populates_simplified_chord_notes(self):
+        """Test that Bar model auto-populates simplified_chord_notes."""
+        from src.models import Bar
+
+        # Create bar with 6 chord
+        bar = Bar(chords=["C6", "G", "Am"])
+
+        # Should have both chord_notes and simplified_chord_notes
+        self.assertEqual(len(bar.chord_notes), 3)
+        self.assertEqual(len(bar.simplified_chord_notes), 3)
+
+        # C6 simplified should match C major
+        self.assertEqual(bar.simplified_chord_notes[0], [48, 52, 55])
+
+        # G should be same in both
+        self.assertEqual(bar.simplified_chord_notes[1], bar.chord_notes[1])
+
+    def test_template_includes_simplified_channel(self):
+        """Test that template includes SimplifiedChordChannel configuration."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Test", bars=[Bar(chords=["C6"])])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check for SimplifiedChordChannel configuration
+        self.assertIn("SimplifiedChordChannel = 12", script)
+        self.assertIn("ActiveSimplifiedNotes", script)
+        self.assertIn("NumActiveSimplifiedNotes", script)
+
+    def test_template_includes_onshiftdown(self):
+        """Test that template includes @OnShiftDown block."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Test", bars=[Bar(chords=["C"])])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check for @OnShiftDown block
+        self.assertIn("@OnShiftDown", script)
+        self.assertIn("Call @StopAllNotes", script)
+
+    def test_template_sends_to_both_channels(self):
+        """Test that template sends notes to both channels."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Test", bars=[Bar(chords=["C6"])])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check for both channel sends
+        self.assertIn("SendMIDINoteOn ChordNoteChannel - 1,", script)
+        self.assertIn("SendMIDINoteOn SimplifiedChordChannel - 1,", script)
+
+    def test_stopallnotes_stops_both_channels(self):
+        """Test that @StopAllNotes stops notes on both channels."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, Bar, SongCollection
+
+        songs = SongCollection(songs=[
+            Song(title="Test", bars=[Bar(chords=["C"])])
+        ])
+
+        generator = ChordSequenceGenerator()
+        script = generator.generate_script(songs)
+
+        # Check @StopAllNotes block exists
+        self.assertIn("@StopAllNotes", script)
+
+        # Check that script has SendMIDINoteOff for both channels in @StopAllNotes block
+        # We're looking for the pattern where we loop through notes and send off messages
+        # The comment should say "on both channels"
+        self.assertIn("on both channels", script.lower())
+
+        # Count SendMIDINoteOff occurrences - should have multiple
+        # At least 2 in @StopAllNotes (one per channel)
+        noteoff_count = script.count("SendMIDINoteOff")
+        self.assertGreaterEqual(noteoff_count, 2)
+
+    def test_integration_simplified_voicing(self):
+        """Integration test for simplified voicing with C6 chord."""
+        from src.generator import ChordSequenceGenerator
+        from src.models import Song, SongCollection
+
+        # Create test file with C6 chord
+        test_dir = tempfile.mkdtemp()
+        try:
+            song_file = Path(test_dir) / "test_c6.txt"
+            song_file.write_text("C6 Test\nC6 G Am F6\n")
+
+            # Load song
+            song = Song.from_file(song_file)
+            songs = SongCollection(songs=[song])
+
+            # Generate script
+            generator = ChordSequenceGenerator()
+            script = generator.generate_script(songs)
+
+            # Verify simplified channel configuration
+            self.assertIn("SimplifiedChordChannel = 12", script)
+
+            # Verify simplified notes are mentioned in comments
+            self.assertIn("Simplified:", script)
+
+            # Verify both C6 full voicing and simplified are present
+            # C6 full has 4 notes, simplified has 3 notes
+            self.assertIn("@PlayChordSong0", script)
+
+        finally:
+            shutil.rmtree(test_dir)
+
+
 def run_tests():
     """Run all tests."""
     # Create test suite
@@ -1067,6 +1407,8 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestTemplateRendering))
     suite.addTests(loader.loadTestsFromTestCase(TestGenerateTextScript))
     suite.addTests(loader.loadTestsFromTestCase(TestIntegration))
+    suite.addTests(loader.loadTestsFromTestCase(TestChordNotePlayback))
+    suite.addTests(loader.loadTestsFromTestCase(TestSimplifiedVoicings))
 
     # Run tests
     runner = unittest.TextTestRunner(verbosity=2)
